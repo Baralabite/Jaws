@@ -1,0 +1,312 @@
+#---[Imports]---#
+import pygame
+import pyprop as robot
+import gui
+
+#---[Variables]---#
+
+app = None
+e = None
+gui = gui.GUI()
+
+class Event:
+    def __init__(self):
+        self.events = {}
+
+    def registerEvent(self, name, trigger, functionToCall):
+        self.events[name] = (trigger, functionToCall)
+
+    def deleteEvent(self, name):
+        del self.events[name]
+
+    def update(self):
+        for e in pygame.event.get():
+            for x in self.events:
+                item = self.events[x]
+                if item[0] == e.type:
+                    item[1](e)
+
+
+class Application:
+    def __init__(self):
+        self.surf = None
+        self.clock = None
+        self.averageFPS = []
+        self.recv = robot.Reciever()
+
+    def start(self):        
+        pygame.init()
+        self.clock = pygame.time.Clock()
+        self.surf = pygame.display.set_mode(pygame.display.list_modes()[0], pygame.FULLSCREEN)
+        self.surf.convert()
+        e.registerEvent("QuitEvent", pygame.QUIT, self.Quitter)
+        e.registerEvent("KeyEvent", pygame.KEYDOWN, self.keyHandler)
+        self.initGui()
+
+
+        self.recv.start(10)
+        self.recv.registerListener("QTI-OL", self.QTIOLHandler)
+        self.recv.registerListener("QTI-IL", self.QTIILHandler)
+        self.recv.registerListener("QTI-M", self.QTIMHandler)
+        self.recv.registerListener("QTI-IR", self.QTIIRHandler)
+        self.recv.registerListener("QTI-OR", self.QTIORHandler)
+        self.recv.registerListener("PING-M", self.PingMHandler)
+        self.recv.registerListener("PING-R", self.PingRHandler)
+        self.recv.registerListener("BWSTRIP", self.BWStripHandler)
+        self.recv.registerListener("SPEED-LOGIC", self.LogicSpeedHandler)
+        self.recv.registerListener("SPEED-SENSOR1", self.Sensor1SpeedHandler)
+        self.recv.registerListener("SPEED-SENSOR2", self.Sensor2SpeedHandler)
+        self.recv.registerListener("SPEED-DEBUG", self.DebugSpeedHandler)
+        self.recv.registerListener("SPEED-SENSOR3", self.Sensor3SpeedHandler)
+        self.recv.registerListener("COGS-USED", self.CogsUsedHandler)
+        self.recv.registerListener("LOCATION", self.StatePictureHandler)
+        self.recv.registerListener("HEADING", self.HeadingHandler)
+
+        self.recv.registerListener("MTRL-SPEED", self.LeftMtrSpeed)
+        self.recv.registerListener("MTRL-DIR", self.LeftMtrDirection)
+        self.recv.registerListener("MTRR-SPEED", self.RightMtrSpeed)
+        self.recv.registerListener("MTRR-DIR", self.RightMtrDirection)
+        self.recv.registerListener("MTRA-SPEED", self.ArmMtrSpeed)
+        self.recv.registerListener("MTRA-DIR", self.ArmMtrDirection)
+
+        self.recv.registerListener("CPALL-RED", self.LeftRedHandler)
+        self.recv.registerListener("CPALL-GREEN", self.LeftGreenHandler)
+        self.recv.registerListener("CPALL-BLUE", self.LeftBlueHandler)
+        self.recv.registerListener("CPALR-RED", self.RightRedHandler)
+        self.recv.registerListener("CPALR-GREEN", self.RightGreenHandler)
+        self.recv.registerListener("CPALR-BLUE", self.RightBlueHandler)
+        
+        self.loop()
+
+    def initGui(self):
+        global gui
+        #-----[Gui Init Code Here]-----#
+        gui.start(e)
+
+        gui.addButton("Quit", self.surf, (1300,10), "Quit", self.Quit)
+        
+        gui.addGraph("APM", self.surf, (1250, 10), (25, 25), 200, 0, 10)  #APM: Application Performance Meter
+        gui.addGraphChannel("APM", 0, (0, 0,0))
+        gui.addValueBox("FPS", self.surf, "FPS", (1125, 10) , size=36)
+
+        gui.addFrame("QTIFrame", self.surf, "QTI Sensors", (10, 10), (200, 200), (0, 0, 255))
+        gui.addQTIBWStrip("QTIStrip", self.surf, (20, 40), (180, 36))
+        gui.addValueBox("QTIOuterLeftLabel",  self.surf, "QTI Outer Left", (20, 100) , size=24)
+        gui.addValueBox("QTIInnerLeftLabel",       self.surf, "QTI Left", (20, 120) , size=24)
+        gui.addValueBox("QTIMiddleLabel",     self.surf, "QTI Middle", (20, 140) , size=24)
+        gui.addValueBox("QTIInnerRightLabel",      self.surf, "QTI Right", (20, 160) , size=24)
+        gui.addValueBox("QTIOuterRightLabel", self.surf, "QTI Outer Right", (20, 180) , size=24)
+
+        gui.addFrame("PingFrame", self.surf, "Ping", (10, 220), (200, 120), (0,0,255))
+        gui.addProgressBar("PingL", self.surf, (20, 250), (180, 20), "Left Ping - ")
+        gui.addProgressBar("PingM", self.surf, (20, 280), (180, 20), "Middle Ping - ")
+        gui.addProgressBar("PingR", self.surf, (20, 310), (180, 20), "Right Ping - ")
+
+        gui.addFrame("CompassFrame", self.surf, "Heading", (10, 350), (200, 200), (0, 0, 255))
+        gui.addCompass("Heading", self.surf, (110, 460), 80)
+
+        gui.addFrame("CoreFrame", self.surf, "Cores", (10, 560), (200, 200), (0,0,255))
+        gui.addProgressBar("LogicSpeed", self.surf, (20, 590), (180, 20), "Logic - ")
+        gui.addProgressBar("Sensor1Speed", self.surf, (20, 620), (180, 20), "Sensor 1 - ")
+        gui.addProgressBar("Sensor2Speed", self.surf, (20, 650), (180, 20), "Sensor 2 - ")
+        gui.addProgressBar("DebugSpeed", self.surf, (20, 710), (180, 20), "Debug - ")
+        gui.addProgressBar("Sensor3Speed", self.surf, (20, 680), (180, 20), "Sensor 3 - ")
+        gui.addValueBox("CogsUsed", self.surf, "Cores Used", (20, 733), color=(0,255,0), size=32, value=0)
+
+        gui.addFrame("MotorFrame", self.surf, "Motors", (230, 10), (200, 200), (0,0,255))
+        gui.addProgressBar("LeftMotorSpeed", self.surf, (240, 40), (180, 20), "Left Motor - ")
+        gui.addProgressBar("ArmMotorSpeed", self.surf, (240, 70), (180, 20), "Arm Motor - ")
+        gui.addProgressBar("RightMotorSpeed", self.surf, (240, 100), (180, 20), "Right Motor - ")
+        gui.addValueBox("leftDirection", self.surf, "Left Direction", (240, 130), color=(0,255,0), size=20, value="Stopped")
+        gui.addValueBox("rightDirection", self.surf, "Right Direction", (240, 145), color=(0,255,0), size=20, value="Stopped")
+        gui.addValueBox("armDirection", self.surf, "Arm Direction", (240, 160), color=(0,255,0), size=20, value="Stopped")
+
+        gui.addPictureBox("StatePictureBox", self.surf, "State", (230, 220), (540, 540), (0,0,255), "Seesaw.png")
+
+        #gui.addMap("Map", self.surf, "Map", (650, 10), (400, 400), (0,0,255))
+
+        gui.addFrame("CPALFrame", self.surf, "ColorPAL", (440, 10), (200, 200), (0,0,255))
+        gui.addValueBox("LeftCpalRed", self.surf, "Left Red", (450, 40), color=(255, 0,0), size=30, value="0")
+        gui.addValueBox("LeftCpalGreen", self.surf, "Left Green", (450, 60), color=(0, 255,0), size=30, value="0")
+        gui.addValueBox("LeftCpalBlue", self.surf, "Left Blue", (450, 80), color=(0, 0,255), size=30, value="0")
+        gui.addValueBox("RightCpalRed", self.surf, "Right Red", (450, 100), color=(255, 0,0), size=30, value="0")
+        gui.addValueBox("RightCpalGreen", self.surf, "Right Green", (450, 120), color=(0, 255,0), size=30, value="0")
+        gui.addValueBox("RightCpalBlue", self.surf, "Right Blue", (450, 140), color=(0, 0,255), size=30, value="0")
+
+        gui.addFrame("MiscFrame", self.surf, "Misc. Info", (780, 220), (570, 270), (0,0,255))
+
+        gui.addFrame("Shell", self.surf, "Interactive Console", (780, 500), (570, 260), (0,0,255))
+        gui.addTextBox("TextBox1", self.surf, (790, 730), (550, 20), self.executeTextCommand)
+        gui.addTextListBox("InteractiveConsole", self.surf, (790, 530), (550, 190), (255,0,0))
+
+        #------------------------------#
+
+    def drawText(self, pos, text):
+        font = pygame.font.Font(None, 32)
+        text = font.render(text, 1,(0,255,0))
+        return self.surf.blit(text, pos)
+            
+
+    def loop(self):
+        global gui
+        a = 0
+        b = 0
+        c = 0
+        d = 0
+        while 1:
+            e.update()
+            self.surf.fill((0,0,0))
+
+            gui.update()
+
+            self.recv.update()
+            
+            pygame.display.flip()
+            self.clock.tick()
+            
+            self.averageFPS.append(int(self.clock.get_fps()))
+            if len(self.averageFPS) > 100:
+                a = 0
+                cnt = 1
+                for x in self.averageFPS:
+                    a = a + x
+                    cnt = cnt + 1
+                a = a / cnt
+                gui.setValueBoxValue("FPS", int(a))
+                gui.addGraphEntry("APM", 0, int(a))
+                self.averageFPS = []
+
+    #---------------[Value Handlers]---------------#
+
+    def executeTextCommand(self, data):
+        print "Command:", data
+        gui.addTextListBoxEntry("InteractiveConsole", data)
+
+    def QTIOLHandler(self, data):
+        gui.setValueBoxValue("QTIOuterLeftLabel", data)
+
+    def QTIILHandler(self, data):
+        gui.setValueBoxValue("QTIInnerLeftLabel", data)
+
+    def QTIMHandler(self, data):
+        gui.setValueBoxValue("QTIMiddleLabel", data)
+
+    def QTIIRHandler(self, data):
+        gui.setValueBoxValue("QTIInnerRightLabel", data)
+
+    def QTIORHandler(self, data):
+        gui.setValueBoxValue("QTIOuterRightLabel", data)
+
+    def PingMHandler(self, data):
+        gui.setProgressBarValue("PingM", int(data))
+
+    def PingRHandler(self, data):
+        gui.setProgressBarValue("PingR", int(data))
+
+    def BWStripHandler(self, data):
+        gui.setQTIBWStripValues("QTIStrip", data)
+
+    def LogicSpeedHandler(self, data):
+        gui.setProgressBarValue("LogicSpeed", int(data))
+
+    def Sensor1SpeedHandler(self, data):
+        gui.setProgressBarValue("Sensor1Speed", int(data))
+
+    def Sensor2SpeedHandler(self, data):
+        gui.setProgressBarValue("Sensor2Speed", int(data))
+
+    def DebugSpeedHandler(self, data):
+        gui.setProgressBarValue("DebugSpeed", int(data))
+
+    def Sensor3SpeedHandler(self, data):
+        gui.setProgressBarValue("Sensor3Speed", int(data))
+
+    def CogsUsedHandler(self, data):
+        gui.setValueBoxValue("CogsUsed", int(data))
+
+    def HeadingHandler(self, data):
+        gui.setCompassAngle("Heading", data)
+        
+
+    def LeftMtrSpeed(self, data):
+        gui.setProgressBarValue("LeftMotorSpeed", int(data))
+
+    def LeftMtrDirection(self, data):
+        gui.setValueBoxValue("leftDirection", data)
+
+    def RightMtrSpeed(self, data):
+        gui.setProgressBarValue("RightMotorSpeed", int(data))
+
+    def RightMtrDirection(self, data):
+        gui.setValueBoxValue("rightDirection", data)
+
+    def ArmMtrSpeed(self, data):
+        gui.setProgressBarValue("ArmMotorSpeed", int(data))
+
+    def ArmMtrDirection(self, data):
+        gui.setValueBoxValue("armDirection", data)
+
+    def LeftRedHandler(self, data):
+        gui.setValueBoxValue("LeftCpalRed", data)
+
+    def LeftGreenHandler(self, data):
+        gui.setValueBoxValue("LeftCpalGreen", data)
+
+    def LeftBlueHandler(self, data):
+        gui.setValueBoxValue("LeftCpalBlue", data)
+
+    def RightRedHandler(self, data):
+        gui.setValueBoxValue("RightCpalRed", data)
+
+    def RightGreenHandler(self, data):
+        gui.setValueBoxValue("RightCpalGreen", data)
+
+    def RightBlueHandler(self, data):
+        gui.setValueBoxValue("RightCpalBlue", data)
+        
+
+    def StatePictureHandler(self, data):
+        if data=="Starting Tile" and gui.getPictureBoxImage("StatePictureBox")!="StartingTile.png":
+            gui.setPictureBoxImage("StatePictureBox", "StartingTile.png")
+        elif data=="Line Following" and gui.getPictureBoxImage("StatePictureBox")!="Line.png":
+            gui.setPictureBoxImage("StatePictureBox", "Line.png")
+        elif data== "Green Corner Left" and gui.getPictureBoxImage("StatePictureBox")!="LeftGreenTurn.png":
+            gui.setPictureBoxImage("StatePictureBox", "LeftGreenTurn.png")
+        elif data=="Green Corner Right" and gui.getPictureBoxImage("StatePictureBox")!="RightGreenTurn.png":
+            gui.setPictureBoxImage("StatePictureBox", "RightGreenTurn.png")
+        elif data=="Off Line" and gui.getPictureBoxImage("StatePictureBox")!="OffLine.png":
+            gui.setPictureBoxImage("StatePictureBox", "OffLine.png")
+        elif data=="Water Tower" and gui.getPictureBoxImage("StatePictureBox")!="WaterTower.png":
+            gui.setPictureBoxImage("StatePictureBox", "WaterTower.png")
+        elif data=="Bridge" and gui.getPictureBoxImage("StatePictureBox")!="Bridge.png":
+            gui.setPictureBoxImage("StatePictureBox", "Bridge.png")
+        #else:
+        #    gui.setPictureBoxImage("StatePictureBox", "Unknown.png")
+
+    #----------------------------------------------#
+
+    def Quit(self):
+        pygame.quit()
+        quit()
+            
+
+    def keyHandler(self, e):
+        if e.dict['scancode'] == 1:
+            #self.recv.stop()
+            pygame.quit()
+            quit()
+
+    def Quitter(self, e):
+        #self.recv.stop()
+        quit()
+            
+        
+
+if __name__ == "__main__":
+    e = Event()
+    app = Application()
+    app.start()
+    loop()
+            
+        
+            
